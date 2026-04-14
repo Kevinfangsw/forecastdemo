@@ -89,6 +89,15 @@ module WeatherTestHelper
     }
   end
 
+  # Stubs the full forecast flow for the non-coordinate path.
+  # The controller calls GeocodingService.call + ForecastService.call_with_coordinates
+  # separately, so both need to be stubbed.
+  def stub_forecast_flow(forecast_result, &block)
+    stub_method(GeocodingService, :call, ->(_addr) { build_mock_location }) do
+      stub_method(ForecastService, :call_with_coordinates, ->(**_kw) { forecast_result }, &block)
+    end
+  end
+
   def stub_geocoder_result(postal_code: "60601", coordinates: [ 41.8781, -87.6298 ], address: "Chicago, Cook County, Illinois, 60601, United States")
     mock = OpenStruct.new(
       postal_code: postal_code,

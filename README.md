@@ -6,7 +6,7 @@ A Ruby on Rails weather forecast application with an Apple Weather-inspired desi
 
 - **Current conditions** — labeled "Current Temperature" display, feels-like, humidity, wind speed, and weather description with emoji icons
 - **5-day extended forecast** — daily low/high temperatures, weather conditions, and precipitation probability with labeled column headers (Day, Rain, Condition, Low, High)
-- **Unit toggle (°F / °C)** — switch between Fahrenheit/mph and Celsius/km/h with a single click; preference persists across sessions via localStorage
+- **Unit toggle (F / C)** — switch between Fahrenheit/mph and Celsius/km/h with a single click; preference persists across sessions via localStorage
 - **Address autocomplete** — type-ahead suggestions powered by Nominatim with coordinates passed via hidden fields to skip re-geocoding; supports keyboard navigation (arrow keys, Enter, Escape) and click selection
 - **Canadian postal code support** — handles A1A 1A1 format postal codes (with or without space, any case) by extracting the 3-character Forward Sortation Area (FSA) and searching Nominatim with that
 - **30-minute caching by postal code** — subsequent requests for the same postal code are served from cache, with a visual indicator distinguishing fresh vs. cached results
@@ -14,6 +14,7 @@ A Ruby on Rails weather forecast application with an Apple Weather-inspired desi
 - **Apple Weather-inspired UI** — glass morphism cards, weather-contextual gradient backgrounds, system font stack, responsive typography
 - **Clear labels** — "Current Temperature" label, "High" / "Low" labels, column headers on the 5-day forecast, condition descriptions visible alongside emoji icons, "Current Details" section header
 - **Home navigation** — back link on the forecast page to return to the home search screen
+- **Re-search from results** — search form on the forecast page preserves coordinates in hidden fields so clicking Search again works without re-geocoding
 - **Accessible** — semantic HTML, ARIA labels, screen-reader-only labels, `role="status"` for cache indicators, `role="listbox"` for autocomplete
 - **No API keys required** — uses Open-Meteo (weather) and Nominatim/OpenStreetMap (geocoding), both free and keyless
 - **No database** — fully stateless, service-based architecture
@@ -36,37 +37,39 @@ A Ruby on Rails weather forecast application with an Apple Weather-inspired desi
 
 ```
 User types in search field
-  → autocomplete_controller.js (Stimulus) debounces 300ms
-    → GET /autocomplete?q=... → Nominatim suggestions → dropdown
-  → User selects suggestion (or submits typed address)
+  -> autocomplete_controller.js (Stimulus) debounces 300ms
+    -> GET /autocomplete?q=... -> Nominatim suggestions -> dropdown
+  -> User selects suggestion (or submits typed address)
 
-  → ForecastsController#show
-    → If lat/lon/postal_code params present (from autocomplete selection):
-        → ForecastService.call_with_coordinates (skip geocoding)
-    → Otherwise:
-        → ForecastService.call(address)
-          → GeocodingService (Nominatim) → postal_code + lat/lon
-             (Canadian postal codes: extract FSA and retry if needed)
-          → Check Rails.cache["forecast_v1/{postal_code}"]
-            → HIT:  return cached data (cached=true, cached_at timestamp)
-            → MISS: WeatherService (Open-Meteo) → cache 30 min → return fresh
-    → Render show.html.erb with ForecastResult
+  -> ForecastsController#show
+    -> If lat/lon/postal_code params present (from autocomplete or re-search):
+        -> skip geocoding, use coordinates directly
+    -> Otherwise:
+        -> GeocodingService (Nominatim) -> postal_code + lat/lon
+           (Canadian postal codes: extract FSA and retry if needed)
+    -> ForecastService.call_with_coordinates
+        -> Check Rails.cache["forecast_v1/{postal_code}"]
+          -> HIT:  return cached data (cached=true, cached_at timestamp)
+          -> MISS: WeatherService (Open-Meteo) -> cache 30 min -> return fresh
+    -> Set @latitude, @longitude, @postal_code for hidden fields
+    -> Render show.html.erb with ForecastResult
 
-  → unit_toggle_controller.js (Stimulus)
-    → Reads data-temp-f / data-wind-mph attributes
-    → Converts and updates all displayed values client-side
-    → Persists preference in localStorage
+  -> unit_toggle_controller.js (Stimulus)
+    -> Reads data-temp-f / data-wind-mph attributes
+    -> Converts and updates all displayed values client-side
+    -> Persists preference in localStorage
 ```
 
 ### Key Design Decisions
 
 - **Cache key is postal code** — all addresses within the same postal code share a single cache entry, reducing redundant API calls
 - **`Rails.cache.read`/`write` instead of `.fetch`** — allows distinguishing cache hits from misses so the view can show the correct indicator
-- **Service object pattern** — each service has a single responsibility: `GeocodingService` (address → coordinates), `WeatherService` (coordinates → weather), `ForecastService` (orchestration + caching)
+- **Service object pattern** — each service has a single responsibility: `GeocodingService` (address -> coordinates), `WeatherService` (coordinates -> weather), `ForecastService` (orchestration + caching)
 - **PORO value objects** — `ForecastResult`, `CurrentWeather`, `DayForecast`, `WeatherCode` are plain Ruby objects with no framework dependencies
 - **Client-side unit toggle** — temperatures stored as Fahrenheit in `data-temp-f` attributes; Stimulus converts on the fly without page reload
-- **Coordinate pass-through** — autocomplete returns lat/lon/postal_code alongside display names; selecting a suggestion populates hidden form fields so the server skips re-geocoding entirely
+- **Coordinate pass-through** — autocomplete returns lat/lon/postal_code alongside display names; selecting a suggestion populates hidden form fields so the server skips re-geocoding entirely. The show page also embeds coordinates as hidden fields so re-searching the same location works without a fresh geocoding call.
 - **Server-side autocomplete proxy** — `/autocomplete` proxies to Nominatim to maintain User-Agent header and avoid CORS issues
+- **Minimal Rails footprint** — only ActiveModel, ActionController, ActionView, and TestUnit railties are loaded; no database, no ActiveRecord, no ActionMailer, no ActionCable
 
 ## Getting Started
 
@@ -121,20 +124,20 @@ bin/ci               # Runs all of the above + tests
 ```
 app/
   models/
-    weather_code.rb          # WMO code → description, emoji, gradient mapping
+    weather_code.rb          # WMO code -> description, emoji, gradient mapping
     current_weather.rb       # Value object: current conditions
     day_forecast.rb          # Value object: single day forecast
     forecast_result.rb       # Value object: complete forecast + cache metadata
   services/
-    geocoding_service.rb     # Address → {postal_code, lat, lon} via Nominatim
-    weather_service.rb       # Lat/lon → weather data via Open-Meteo API
-    forecast_service.rb      # Orchestrator: geocode → cache → fetch → result
+    geocoding_service.rb     # Address -> {postal_code, lat, lon} via Nominatim
+    weather_service.rb       # Lat/lon -> weather data via Open-Meteo API
+    forecast_service.rb      # Orchestrator: geocode -> cache -> fetch -> result
   controllers/
     forecasts_controller.rb  # index + show + autocomplete actions
   helpers/
     forecasts_helper.rb      # gradient_class_for(), format_temperature()
   javascript/controllers/
-    unit_toggle_controller.js   # °F/°C toggle with localStorage persistence
+    unit_toggle_controller.js   # F/C toggle with localStorage persistence
     autocomplete_controller.js  # Debounced address suggestions with keyboard nav
   views/
     forecasts/
@@ -144,13 +147,13 @@ app/
       application.html.erb   # Base layout with Apple system font stack
   assets/
     tailwind/
-      application.css        # Tailwind v4 config with @source for model scanning
+      application.css        # Tailwind v4 config
 
 test/
   models/                    # WeatherCode mapping, ForecastResult defaults
   services/                  # Geocoding (incl. Canadian postal codes), Weather API, cache
   controllers/               # Routes, errors, network errors, XSS, autocomplete endpoint
-  integration/               # Full user flows, unit toggle presence, autocomplete presence
+  integration/               # Full user flows, unit toggle, autocomplete, accessibility
 
 config/
   initializers/

@@ -10,7 +10,7 @@ class ForecastFlowTest < ActionDispatch::IntegrationTest
   test "full flow: homepage -> search -> forecast display with labels" do
     forecast = build_mock_forecast_result(cached: false)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       # 1. Visit the homepage
       get root_path
       assert_response :success
@@ -60,24 +60,26 @@ class ForecastFlowTest < ActionDispatch::IntegrationTest
     cached_forecast = build_mock_forecast_result(cached: true)
     call_count = 0
 
-    service_stub = ->(_addr) {
+    service_stub = ->(**_kw) {
       call_count += 1
       call_count == 1 ? fresh_forecast : cached_forecast
     }
 
-    stub_method(ForecastService, :call, service_stub) do
-      get forecast_path, params: { address: "Chicago, IL" }
-      assert_match(/Just updated/, response.body)
-      assert_no_match(/Cached result from/, response.body)
+    stub_method(GeocodingService, :call, ->(_addr) { build_mock_location }) do
+      stub_method(ForecastService, :call_with_coordinates, service_stub) do
+        get forecast_path, params: { address: "Chicago, IL" }
+        assert_match(/Just updated/, response.body)
+        assert_no_match(/Cached result from/, response.body)
 
-      get forecast_path, params: { address: "Chicago, IL" }
-      assert_match(/Cached result from/, response.body)
-      assert_no_match(/Just updated/, response.body)
+        get forecast_path, params: { address: "Chicago, IL" }
+        assert_match(/Cached result from/, response.body)
+        assert_no_match(/Just updated/, response.body)
+      end
     end
   end
 
   test "error flow: invalid address shows flash and returns to search form" do
-    stub_method(ForecastService, :call, ->(_addr) { raise GeocodingService::GeocodingError, "Could not find location" }) do
+    stub_method(GeocodingService, :call, ->(_addr) { raise GeocodingService::GeocodingError, "Could not find location" }) do
       get forecast_path, params: { address: "invalid" }
       assert_redirected_to root_path
 
@@ -89,19 +91,21 @@ class ForecastFlowTest < ActionDispatch::IntegrationTest
   end
 
   test "weather API error flow shows user-friendly message" do
-    stub_method(ForecastService, :call, ->(_addr) { raise WeatherService::WeatherApiError, "Service timeout" }) do
-      get forecast_path, params: { address: "Chicago, IL" }
-      assert_redirected_to root_path
+    stub_method(GeocodingService, :call, ->(_addr) { build_mock_location }) do
+      stub_method(ForecastService, :call_with_coordinates, ->(**_kw) { raise WeatherService::WeatherApiError, "Service timeout" }) do
+        get forecast_path, params: { address: "Chicago, IL" }
+        assert_redirected_to root_path
 
-      follow_redirect!
-      assert_match(/Weather data unavailable/, response.body)
+        follow_redirect!
+        assert_match(/Weather data unavailable/, response.body)
+      end
     end
   end
 
   test "search form is present on the forecast results page for easy re-search" do
     forecast = build_mock_forecast_result(cached: false)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "Chicago, IL" }
       assert_select "input[name='address']"
       assert_select "input[type='submit']"
@@ -126,7 +130,7 @@ class ForecastFlowTest < ActionDispatch::IntegrationTest
   test "temperature data attributes are present for client-side unit conversion" do
     forecast = build_mock_forecast_result(cached: false)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "Chicago, IL" }
 
       # Verify data attributes for unit toggle
@@ -142,7 +146,7 @@ class ForecastFlowTest < ActionDispatch::IntegrationTest
     assert_select "[data-autocomplete-url-value='/autocomplete']"
 
     forecast = build_mock_forecast_result(cached: false)
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "Chicago, IL" }
       assert_select "[data-controller='autocomplete']"
     end
@@ -151,7 +155,7 @@ class ForecastFlowTest < ActionDispatch::IntegrationTest
   test "forecast page has a link back to the home page" do
     forecast = build_mock_forecast_result(cached: false)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "Chicago, IL" }
       assert_select "a[href='/']", text: /Home/
     end
@@ -160,7 +164,7 @@ class ForecastFlowTest < ActionDispatch::IntegrationTest
   test "5-day forecast uses abbreviated day names to prevent overlap" do
     forecast = build_mock_forecast_result(cached: false)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "Chicago, IL" }
       # Day names should be 3-letter abbreviations (Mon, Tue, etc.), not full names
       assert_no_match(/Wednesday/, response.body)

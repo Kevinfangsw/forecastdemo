@@ -30,17 +30,23 @@ class ForecastsController < ApplicationController
       return
     end
 
-    @forecast = if coordinates_provided?
-      ForecastService.call_with_coordinates(
-        address: address,
-        latitude: params[:lat].to_f,
-        longitude: params[:lon].to_f,
-        postal_code: params[:postal_code]
-      )
+    if coordinates_provided?
+      @latitude = params[:lat].to_f
+      @longitude = params[:lon].to_f
+      @postal_code = params[:postal_code]
     else
-      ForecastService.call(address)
+      location = GeocodingService.call(address)
+      @latitude = location[:latitude]
+      @longitude = location[:longitude]
+      @postal_code = location[:zip_code]
     end
 
+    @forecast = ForecastService.call_with_coordinates(
+      address: address,
+      latitude: @latitude,
+      longitude: @longitude,
+      postal_code: @postal_code
+    )
     @address_query = address
   rescue GeocodingService::GeocodingError => e
     redirect_to root_path, alert: e.message

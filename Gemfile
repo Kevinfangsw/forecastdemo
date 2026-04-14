@@ -1,6 +1,5 @@
 source "https://rubygems.org"
 
-# Bundle edge Rails instead: gem "rails", github: "rails/rails", branch: "main"
 gem "rails", "~> 8.1.2"
 # The modern asset pipeline for Rails [https://github.com/rails/propshaft]
 gem "propshaft"
@@ -18,9 +17,8 @@ gem "tailwindcss-rails"
 gem "geocoder", "~> 1.8"
 # HTTP requests to weather APIs [https://github.com/jnunemaker/httparty]
 gem "httparty", "~> 0.24"
-
-# Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
-# gem "bcrypt", "~> 3.1.7"
+# OpenStruct is used by test stubs and will leave the default gems in Ruby 3.5
+gem "ostruct"
 
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
 gem "tzinfo-data", platforms: %i[ windows jruby ]

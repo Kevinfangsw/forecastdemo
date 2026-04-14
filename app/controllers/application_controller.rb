@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # Base controller for the application.
 # Since this is a stateless weather-lookup app (no database, no authentication),
 # the base controller only configures importmap-based cache invalidation.

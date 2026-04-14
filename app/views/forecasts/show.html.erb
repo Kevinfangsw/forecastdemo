@@ -29,6 +29,9 @@
               data: { autocomplete_target: "input",
                       action: "input->autocomplete#onInput keydown->autocomplete#onKeydown" } %>
         </div>
+        <%= hidden_field_tag :lat, @latitude %>
+        <%= hidden_field_tag :lon, @longitude %>
+        <%= hidden_field_tag :postal_code, @postal_code %>
         <%= f.submit "Search",
             class: "bg-white/20 hover:bg-white/30 active:bg-white/15 text-white font-medium text-xs px-4 py-2.5 rounded-xl cursor-pointer transition-all duration-200" %>
       <% end %>

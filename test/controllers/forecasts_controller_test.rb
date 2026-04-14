@@ -3,6 +3,10 @@
 require "test_helper"
 
 class ForecastsControllerTest < ActionDispatch::IntegrationTest
+  setup do
+    Rails.cache.clear
+  end
+
   # --- Index action ---
 
   test "GET / renders the search form" do
@@ -30,7 +34,7 @@ class ForecastsControllerTest < ActionDispatch::IntegrationTest
   test "GET /forecast renders forecast for a valid address" do
     forecast = build_mock_forecast_result(cached: false)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "Chicago, IL" }
       assert_response :success
       assert_match(/72/, response.body)
@@ -41,7 +45,7 @@ class ForecastsControllerTest < ActionDispatch::IntegrationTest
   test "GET /forecast renders cached indicator when result is from cache" do
     forecast = build_mock_forecast_result(cached: true)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "Chicago, IL" }
       assert_response :success
       assert_match(/Cached result from/, response.body)
@@ -51,7 +55,7 @@ class ForecastsControllerTest < ActionDispatch::IntegrationTest
   test "GET /forecast displays labeled current temperature, high, low, and extended forecast" do
     forecast = build_mock_forecast_result(cached: false)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "Chicago, IL" }
       assert_response :success
 
@@ -77,7 +81,7 @@ class ForecastsControllerTest < ActionDispatch::IntegrationTest
   test "GET /forecast includes unit toggle buttons" do
     forecast = build_mock_forecast_result(cached: false)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "Chicago, IL" }
       assert_select "[data-controller='unit-toggle']"
       assert_select "[data-unit-toggle-target='btnF']"
@@ -89,7 +93,7 @@ class ForecastsControllerTest < ActionDispatch::IntegrationTest
   test "GET /forecast renders data-temp-f attributes for unit toggling" do
     forecast = build_mock_forecast_result(cached: false)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "Chicago, IL" }
       # Hero temperature
       assert_select "[data-temp-f='72.0']"
@@ -103,7 +107,7 @@ class ForecastsControllerTest < ActionDispatch::IntegrationTest
   test "GET /forecast includes search form on results page with autocomplete" do
     forecast = build_mock_forecast_result(cached: false)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "Chicago, IL" }
       assert_select "input[name='address']"
       assert_select "[data-controller='autocomplete']"
@@ -113,7 +117,7 @@ class ForecastsControllerTest < ActionDispatch::IntegrationTest
   test "GET /forecast shows condition text in 5-day forecast rows" do
     forecast = build_mock_forecast_result(cached: false)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "Chicago, IL" }
       # Condition descriptions should be visible (not just emoji)
       assert_match(/Partly Cloudy/, response.body)
@@ -125,7 +129,7 @@ class ForecastsControllerTest < ActionDispatch::IntegrationTest
   test "GET /forecast shows column headers in 5-day forecast with Low before High" do
     forecast = build_mock_forecast_result(cached: false)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "Chicago, IL" }
       assert_match(/Day/, response.body)
       assert_match(/Rain/, response.body)
@@ -154,7 +158,7 @@ class ForecastsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "GET /forecast redirects with alert on geocoding error" do
-    stub_method(ForecastService, :call, ->(_addr) { raise GeocodingService::GeocodingError, "Could not find location" }) do
+    stub_method(GeocodingService, :call, ->(_addr) { raise GeocodingService::GeocodingError, "Could not find location" }) do
       get forecast_path, params: { address: "xyznonexistent" }
       assert_redirected_to root_path
       follow_redirect!
@@ -163,18 +167,20 @@ class ForecastsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "GET /forecast redirects with alert on weather API error" do
-    stub_method(ForecastService, :call, ->(_addr) { raise WeatherService::WeatherApiError, "Service unavailable" }) do
-      get forecast_path, params: { address: "Chicago, IL" }
-      assert_redirected_to root_path
-      follow_redirect!
-      assert_match(/Weather data unavailable/, response.body)
+    stub_method(GeocodingService, :call, ->(_addr) { build_mock_location }) do
+      stub_method(ForecastService, :call_with_coordinates, ->(**_kw) { raise WeatherService::WeatherApiError, "Service unavailable" }) do
+        get forecast_path, params: { address: "Chicago, IL" }
+        assert_redirected_to root_path
+        follow_redirect!
+        assert_match(/Weather data unavailable/, response.body)
+      end
     end
   end
 
   # --- Show action: network errors ---
 
   test "GET /forecast handles network timeout gracefully" do
-    stub_method(ForecastService, :call, ->(_addr) { raise Net::OpenTimeout, "execution expired" }) do
+    stub_method(GeocodingService, :call, ->(_addr) { raise Net::OpenTimeout, "execution expired" }) do
       get forecast_path, params: { address: "Chicago, IL" }
       assert_redirected_to root_path
       follow_redirect!
@@ -183,7 +189,7 @@ class ForecastsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "GET /forecast handles DNS resolution failure gracefully" do
-    stub_method(ForecastService, :call, ->(_addr) { raise SocketError, "getaddrinfo: nodename nor servname provided" }) do
+    stub_method(GeocodingService, :call, ->(_addr) { raise SocketError, "getaddrinfo: nodename nor servname provided" }) do
       get forecast_path, params: { address: "Chicago, IL" }
       assert_redirected_to root_path
       follow_redirect!
@@ -192,7 +198,7 @@ class ForecastsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "GET /forecast handles connection refused gracefully" do
-    stub_method(ForecastService, :call, ->(_addr) { raise Errno::ECONNREFUSED, "Connection refused" }) do
+    stub_method(GeocodingService, :call, ->(_addr) { raise Errno::ECONNREFUSED, "Connection refused" }) do
       get forecast_path, params: { address: "Chicago, IL" }
       assert_redirected_to root_path
       follow_redirect!
@@ -205,7 +211,7 @@ class ForecastsControllerTest < ActionDispatch::IntegrationTest
   test "GET /forecast safely escapes HTML in address parameter" do
     forecast = build_mock_forecast_result(cached: false)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "<script>alert('xss')</script>" }
       assert_response :success
       # Rails auto-escapes ERB output — script tag must not appear unescaped
@@ -225,7 +231,7 @@ class ForecastsControllerTest < ActionDispatch::IntegrationTest
   test "GET /forecast preserves address query in results page search field" do
     forecast = build_mock_forecast_result(cached: false)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "Chicago, IL" }
       assert_select "input[name='address'][value='Chicago, IL']"
     end
@@ -255,7 +261,7 @@ class ForecastsControllerTest < ActionDispatch::IntegrationTest
   test "GET /forecast without lat/lon falls back to geocoding" do
     forecast = build_mock_forecast_result(cached: false)
 
-    stub_method(ForecastService, :call, ->(_addr) { forecast }) do
+    stub_forecast_flow(forecast) do
       get forecast_path, params: { address: "Chicago, IL" }
       assert_response :success
     end
