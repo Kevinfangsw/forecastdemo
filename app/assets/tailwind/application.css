@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+/* Ensure Tailwind v4 scans model files for dynamic gradient classes (WeatherCode) */
+@source "../../models/*.rb";
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+}

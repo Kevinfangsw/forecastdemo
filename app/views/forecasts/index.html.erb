@@ -1,0 +1,51 @@
+<div class="min-h-screen bg-gradient-to-b from-sky-400 via-blue-400 to-blue-500 flex items-center justify-center px-4">
+  <div class="w-full max-w-md text-center">
+
+    <%# App title and tagline %>
+    <div class="mb-10">
+      <p class="text-6xl mb-4" role="img" aria-label="Weather">🌤️</p>
+      <h1 class="text-4xl font-light text-white tracking-tight">Weather</h1>
+      <p class="text-white/60 text-base font-light mt-2">Search for a city or address</p>
+    </div>
+
+    <%# Flash alerts for error messages %>
+    <% if flash[:alert] %>
+      <div class="mb-6 px-5 py-4 bg-red-500/20 backdrop-blur-xl border border-red-300/30 rounded-2xl text-white text-sm font-light" role="alert">
+        <%= flash[:alert] %>
+      </div>
+    <% end %>
+
+    <%# Address search form with autocomplete %>
+    <div class="relative bg-white/15 backdrop-blur-2xl border border-white/20 rounded-2xl p-1.5 shadow-lg"
+         data-controller="autocomplete"
+         data-autocomplete-url-value="/autocomplete">
+      <%= form_with url: forecast_path, method: :get, class: "flex items-center gap-2" do |f| %>
+        <div class="flex-1 relative">
+          <label for="address" class="sr-only">City, address, or zip code</label>
+          <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <%= f.text_field :address,
+              id: "address",
+              placeholder: "City, address, or zip code",
+              value: params[:address],
+              class: "w-full bg-transparent text-white placeholder-white/40 text-base font-light pl-10 pr-4 py-3.5 focus:outline-none",
+              autofocus: true,
+              autocomplete: "off",
+              data: { autocomplete_target: "input",
+                      action: "input->autocomplete#onInput keydown->autocomplete#onKeydown" } %>
+        </div>
+        <%= f.submit "Search",
+            class: "bg-white/25 hover:bg-white/35 active:bg-white/20 text-white font-medium text-sm px-5 py-3 rounded-xl cursor-pointer transition-all duration-200" %>
+      <% end %>
+      <ul data-autocomplete-target="list"
+          data-action="click->autocomplete#select"
+          class="hidden absolute left-0 right-0 top-full mt-1 bg-gray-900 border border-gray-600 rounded-2xl overflow-hidden max-h-60 overflow-y-auto z-50 shadow-xl"
+          role="listbox"></ul>
+    </div>
+
+    <p class="text-white/30 text-xs font-light mt-6">
+      Powered by Open-Meteo &amp; OpenStreetMap
+    </p>
+  </div>
+</div>

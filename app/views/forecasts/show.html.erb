@@ -1,0 +1,183 @@
+<div class="min-h-screen bg-gradient-to-b <%= gradient_class_for(@forecast.current.weather_code) %> px-4 pb-10 pt-6"
+     data-controller="unit-toggle">
+  <div class="max-w-md mx-auto">
+
+    <%# Back to home %>
+    <a href="<%= root_path %>" class="inline-flex items-center gap-1.5 text-white/60 hover:text-white text-sm font-light mb-4 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+      </svg>
+      Home
+    </a>
+
+    <%# Search bar with autocomplete — allows searching again without going back %>
+    <div class="relative bg-white/10 backdrop-blur-2xl border border-white/20 rounded-2xl p-1.5 mb-6"
+         data-controller="autocomplete"
+         data-autocomplete-url-value="/autocomplete">
+      <%= form_with url: forecast_path, method: :get, class: "flex items-center gap-2" do |f| %>
+        <div class="flex-1 relative">
+          <label for="address_show" class="sr-only">City, address, or zip code</label>
+          <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <%= f.text_field :address,
+              id: "address_show",
+              placeholder: "City, address, or zip code",
+              value: @address_query,
+              class: "w-full bg-transparent text-white placeholder-white/40 text-sm font-light pl-10 pr-4 py-3 focus:outline-none",
+              autocomplete: "off",
+              data: { autocomplete_target: "input",
+                      action: "input->autocomplete#onInput keydown->autocomplete#onKeydown" } %>
+        </div>
+        <%= f.submit "Search",
+            class: "bg-white/20 hover:bg-white/30 active:bg-white/15 text-white font-medium text-xs px-4 py-2.5 rounded-xl cursor-pointer transition-all duration-200" %>
+      <% end %>
+      <ul data-autocomplete-target="list"
+          data-action="click->autocomplete#select"
+          class="hidden absolute left-0 right-0 top-full mt-1 bg-gray-900 border border-gray-600 rounded-2xl overflow-hidden max-h-60 overflow-y-auto z-50 shadow-xl"
+          role="listbox"></ul>
+    </div>
+
+    <%# Unit toggle and cache indicator row %>
+    <div class="flex items-center justify-between mb-4">
+      <%# °F / °C toggle %>
+      <div class="flex bg-white/10 rounded-lg p-0.5" role="radiogroup" aria-label="Temperature unit">
+        <button data-action="click->unit-toggle#toggle"
+                data-unit-toggle-unit-param="F"
+                data-unit-toggle-target="btnF"
+                class="px-3 py-1 rounded-md text-xs font-medium bg-white/25 text-white transition-all cursor-pointer"
+                role="radio" aria-checked="true">
+          &deg;F
+        </button>
+        <button data-action="click->unit-toggle#toggle"
+                data-unit-toggle-unit-param="C"
+                data-unit-toggle-target="btnC"
+                class="px-3 py-1 rounded-md text-xs font-medium bg-transparent text-white/50 transition-all cursor-pointer"
+                role="radio" aria-checked="false">
+          &deg;C
+        </button>
+      </div>
+
+      <%# Cache indicator — amber dot for cached, green dot for fresh data %>
+      <% if @forecast.cached? %>
+        <div class="flex items-center gap-1.5" role="status">
+          <div class="w-2 h-2 rounded-full bg-amber-300/80"></div>
+          <span class="text-white/50 text-xs font-light">
+            Cached result from <%= @forecast.cached_at&.strftime("%-I:%M %p") || "recently" %>
+          </span>
+        </div>
+      <% else %>
+        <div class="flex items-center gap-1.5" role="status">
+          <div class="w-2 h-2 rounded-full bg-green-300/80"></div>
+          <span class="text-white/50 text-xs font-light">
+            Just updated
+          </span>
+        </div>
+      <% end %>
+    </div>
+
+    <%# Hero: Location + Current Temperature %>
+    <section class="text-center mb-8" aria-label="Current conditions">
+      <h1 class="text-2xl sm:text-3xl font-light text-white tracking-tight mb-1">
+        <%= @forecast.address %>
+      </h1>
+      <p class="text-white/50 text-xs font-light mb-6"><%= @forecast.zip_code %></p>
+
+      <p class="text-white/50 text-xs font-light uppercase tracking-wider mb-2">Current Temperature</p>
+      <div class="text-7xl sm:text-8xl font-thin text-white leading-none tracking-tighter">
+        <span data-unit-toggle-target="temp" data-temp-f="<%= @forecast.current.temperature_f %>"><%= format_temperature(@forecast.current.temperature_f) %></span><span class="text-4xl sm:text-5xl font-extralight">&deg;</span>
+      </div>
+
+      <p class="text-xl font-light text-white/90 mt-3">
+        <span aria-hidden="true"><%= @forecast.current.icon %></span>
+        <%= @forecast.current.condition %>
+      </p>
+
+      <%# Today's high / low from the first day of the forecast %>
+      <% if @forecast.daily_forecast.any? %>
+        <p class="text-white/60 font-light mt-2">
+          High: <span data-unit-toggle-target="temp" data-temp-f="<%= @forecast.daily_forecast.first.high_f %>"><%= format_temperature(@forecast.daily_forecast.first.high_f) %></span>&deg;
+          &nbsp;&middot;&nbsp;
+          Low: <span data-unit-toggle-target="temp" data-temp-f="<%= @forecast.daily_forecast.first.low_f %>"><%= format_temperature(@forecast.daily_forecast.first.low_f) %></span>&deg;
+        </p>
+      <% end %>
+    </section>
+
+    <%# Weather Details Card: feels like, humidity, wind %>
+    <section class="bg-white/10 backdrop-blur-2xl border border-white/20 rounded-2xl p-5 mb-4 shadow-lg" aria-label="Weather details">
+      <h2 class="text-white/30 text-xs font-light uppercase tracking-wider mb-3">Current Details</h2>
+      <div class="grid grid-cols-3 gap-4">
+        <div class="text-center">
+          <p class="text-white/40 text-xs font-light uppercase tracking-wider mb-1">Feels Like</p>
+          <p class="text-white text-xl font-light"><span data-unit-toggle-target="temp" data-temp-f="<%= @forecast.current.feels_like_f %>"><%= format_temperature(@forecast.current.feels_like_f) %></span>&deg;</p>
+        </div>
+        <div class="text-center">
+          <p class="text-white/40 text-xs font-light uppercase tracking-wider mb-1">Humidity</p>
+          <p class="text-white text-xl font-light"><%= @forecast.current.humidity %><span class="text-sm">%</span></p>
+        </div>
+        <div class="text-center">
+          <p class="text-white/40 text-xs font-light uppercase tracking-wider mb-1">Wind</p>
+          <p class="text-white text-xl font-light"><span data-unit-toggle-target="wind" data-wind-mph="<%= @forecast.current.wind_mph %>"><%= @forecast.current.wind_mph %></span> <span class="text-sm" data-unit-toggle-target="windUnit">mph</span></p>
+        </div>
+      </div>
+    </section>
+
+    <%# 5-Day Extended Forecast %>
+    <% if @forecast.daily_forecast.any? %>
+      <section class="bg-white/10 backdrop-blur-2xl border border-white/20 rounded-2xl shadow-lg overflow-hidden" aria-label="5-day forecast">
+        <div class="px-5 pt-4 pb-2">
+          <h2 class="text-white/40 text-xs font-light uppercase tracking-wider">5-Day Forecast</h2>
+        </div>
+
+        <%# Column headers %>
+        <div class="flex items-center px-5 py-1.5 text-white/30 text-[10px] font-light uppercase tracking-wider">
+          <div class="w-14 shrink-0">Day</div>
+          <div class="w-12 shrink-0">Rain</div>
+          <div class="flex-1 text-center">Condition</div>
+          <div class="w-10 text-right shrink-0">Low</div>
+          <div class="w-10 text-right shrink-0">High</div>
+        </div>
+
+        <% @forecast.daily_forecast.each_with_index do |day, index| %>
+          <div class="flex items-center px-5 py-3 <%= 'border-t border-white/10' unless index == 0 %>">
+            <%# Day name (abbreviated to prevent overlap) %>
+            <div class="w-14 shrink-0">
+              <p class="text-white font-medium text-sm">
+                <%= index == 0 ? "Today" : day.date.strftime("%a") %>
+              </p>
+            </div>
+
+            <%# Rain chance %>
+            <div class="w-12 shrink-0 flex items-center gap-1">
+              <% if day.chance_of_rain.to_i > 0 %>
+                <svg class="w-3 h-3 text-blue-200/70 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
+                </svg>
+                <span class="text-blue-200/70 text-xs font-light"><%= day.chance_of_rain %>%</span>
+              <% end %>
+            </div>
+
+            <%# Weather condition: icon + description %>
+            <div class="flex-1 flex items-center justify-center gap-1.5 min-w-0">
+              <span aria-hidden="true" class="text-lg shrink-0"><%= day.icon %></span>
+              <span class="text-white/60 text-xs font-light truncate"><%= day.condition %></span>
+            </div>
+
+            <%# Low / High temperatures (low on left, high on right) %>
+            <div class="w-10 text-right shrink-0">
+              <span class="text-white/40 font-light text-sm"><span data-unit-toggle-target="temp" data-temp-f="<%= day.low_f %>"><%= format_temperature(day.low_f) %></span>&deg;</span>
+            </div>
+            <div class="w-10 text-right shrink-0">
+              <span class="text-white font-light text-sm"><span data-unit-toggle-target="temp" data-temp-f="<%= day.high_f %>"><%= format_temperature(day.high_f) %></span>&deg;</span>
+            </div>
+          </div>
+        <% end %>
+      </section>
+    <% end %>
+
+    <%# Footer %>
+    <p class="text-center text-white/20 text-xs font-light mt-6">
+      Powered by Open-Meteo &amp; OpenStreetMap
+    </p>
+  </div>
+</div>
